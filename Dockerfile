@@ -60,13 +60,13 @@ RUN apt-get install -y \
 RUN mkdir -p /usr/ns3
 WORKDIR /usr
 
-RUN wget http://www.nsnam.org/release/ns-allinone-3.30.tar.bz2
-RUN tar -xf ns-allinone-3.30.tar.bz2
+RUN wget http://www.nsnam.org/release/ns-allinone-3.32.tar.bz2
+RUN tar -xf ns-allinone-3.32.tar.bz2
 
 # Configure and compile NS-3
-RUN cd ns-allinone-3.30 && ./build.py --enable-examples --enable-tests
+RUN cd ns-allinone-3.32 && ./build.py --enable-examples --enable-tests
 
-RUN ln -s /usr/ns-allinone-3.30/ns-3.26/ /usr/ns3/
+RUN ln -s /usr/ns-allinone-3.32/ns-3.32/ /usr/ns3/
 
 # Cleanup
 RUN apt-get clean && \

@@ -1,8 +1,8 @@
-NAME=gomboin99/ns-3.30
+NAME=ns3
 
 
 build: Dockerfile
 	docker build -t $(NAME) .
 
 run:
-	docker run --rm -it -v `pwd`:/src $(NAME)
+	docker run --rm -it -v $(PWD)/scratch:/usr/ns-allinone-3.32/ns-3.32/scratch $(NAME)
