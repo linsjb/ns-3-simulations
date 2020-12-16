@@ -46,10 +46,44 @@
  #include "ns3/applications-module.h"
  #include "ns3/flow-monitor-helper.h"
  #include "ns3/ipv4-global-routing-helper.h"
+ #include "ns3/netanim-module.h"
  
  using namespace ns3;
  
  NS_LOG_COMPONENT_DEFINE ("SimpleGlobalRoutingExample");
+ 
+ static void received_msg (Ptr<Socket> socket1, Ptr<Socket> socket2, Ptr<const Packet> p, const Address &srcAddress , const Address &dstAddress)
+{
+	std::cout << "::::: A packet received at the Server! Time:   " << Simulator::Now ().GetSeconds () << std::endl;
+	
+	Ptr<UniformRandomVariable> rand=CreateObject<UniformRandomVariable>();
+	
+	if(rand->GetValue(0.0,1.0)<=0.5){
+		std::cout << "::::: Transmitting from Server to Router   "  << std::endl;
+		socket1->Send (Create<Packet> (p->GetSize ()));
+	}
+	else{
+		std::cout << "::::: Transmitting from GW to Controller   "  << std::endl;
+		socket2->SendTo(Create<Packet> (p->GetSize ()),0,srcAddress);
+	}
+}
+
+
+static void GenerateTraffic (Ptr<Socket> socket, Ptr<ExponentialRandomVariable> randomSize,	Ptr<ExponentialRandomVariable> randomTime)
+{
+	uint32_t pktSize = randomSize->GetInteger (); //Get random value for packet size
+	std::cout << "::::: A packet is generate at Node "<< socket->GetNode ()->GetId () << " with size " << pktSize <<" bytes ! Time:   " << Simulator::Now ().GetSeconds () << std::endl;
+	
+	// We make sure that the message is at least 12 bytes. The minimum length of the UDP header. We would get error otherwise.
+	if(pktSize<12){
+		pktSize=12;
+	}
+	
+	socket->Send (Create<Packet> (pktSize));
+
+	Time pktInterval = Seconds(randomTime->GetValue ()); //Get random value for next packet generation time 
+	Simulator::Schedule (pktInterval, &GenerateTraffic, socket, randomSize, randomTime); //Schedule next packet generation
+}
  
  int 
  main (int argc, char *argv[])
@@ -157,20 +191,71 @@
    
      NS_LOG_INFO ("Create Applications.");
 	//
-	// Create a UdpEchoServer application on node one.
+	// Create a UdpServer application on node S.
 	//
-   uint16_t port = 9;  // well-known echo port number
-   UdpEchoServerHelper server (port);
-   ApplicationContainer apps = server.Install (c.Get (3));
-   apps.Start (Seconds (1.0));
-   apps.Stop (Seconds (10.0));
+    uint16_t port_number = 9;  
+    ApplicationContainer server_apps;
+   UdpServerHelper serverS (port_number);
+   server_apps.Add(serverS.Install(c.Get (3)));
    
+   Ptr<UdpServer> S1 = serverS.GetServer();
+   
+      
+   // We Initialize the sockets responsable for transmitting messages
+  
+  TypeId tid = TypeId::LookupByName ("ns3::UdpSocketFactory");
+   
+   //Transmission Server -> Router
+  Ptr<Socket> source1 = Socket::CreateSocket (c.Get (3), tid);
+  InetSocketAddress remote1 = InetSocketAddress (iGiR.GetAddress (1), port_number);
+  source1->Connect (remote1);
+  
+  //Transmission Server -> Client
+  Ptr<Socket> source2 = Socket::CreateSocket (c.Get (3), tid);
+   
+   S1->TraceConnectWithoutContext ("RxWithAddresses", MakeBoundCallback (&received_msg, source1, source2));
+   
+   server_apps.Start (Seconds (1.0));
+   server_apps.Stop (Seconds (10.0));
+   
+   	//
+	// Create a UdpServer application on node A,B.
+	//
+   UdpServerHelper server (port_number);
+   server_apps.Add(server.Install(c.Get (0)));
+   server_apps.Add(server.Install(c.Get (4)));
+
+   
+   
+   // ####Alternative with Socket (i.e., exponential payload and inter-transmission time)####
+  	
+  Ptr<Socket> sourceA = Socket::CreateSocket (c.Get (0), tid);
+  InetSocketAddress remote = InetSocketAddress (iGiS.GetAddress (1), port_number);
+  sourceA->Connect (remote);
+  
+  Ptr<Socket> sourceB= Socket::CreateSocket (c.Get (4), tid);
+  sourceB->Connect (remote);
+  
+  
+   //Mean inter-transmission time
+   double mean = 0.002; //2 ms
+   Ptr<ExponentialRandomVariable> randomTime = CreateObject<ExponentialRandomVariable> ();
+   randomTime->SetAttribute ("Mean", DoubleValue (mean));
+   
+   //Mean packet time
+   mean = 100; // 100 Bytes
+   Ptr<ExponentialRandomVariable> randomSize = CreateObject<ExponentialRandomVariable> ();
+   randomSize->SetAttribute ("Mean", DoubleValue (mean));
+
+   Simulator::ScheduleWithContext (sourceA->GetNode ()->GetId (), Seconds (2.0), &GenerateTraffic, sourceA, randomSize, randomTime);
+   Simulator::ScheduleWithContext (sourceB->GetNode ()->GetId (), Seconds (2.0), &GenerateTraffic, sourceB, randomSize, randomTime);
+
 
 //
  // Create a UdpEchoClient application to send UDP datagrams from node zero to
  // node one.
  //
- 
+ /*
 	serverAddress = Address(  iGiS.GetAddress (1));
    uint32_t packetSize = 1024;
    //uint32_t maxPacketCount = 1;
@@ -183,12 +268,26 @@
    apps.Start (Seconds (2.0));
    apps.Stop (Seconds (10.0));
  
-
+*/
  
    AsciiTraceHelper ascii;
    p2p.EnableAsciiAll (ascii.CreateFileStream ("simple-global-routing.tr"));
    p2p.EnablePcapAll ("simple-global-routing");
  
+ 
+   AnimationInterface anim ("example.xml");
+   anim.EnablePacketMetadata (true);
+  anim.SetConstantPosition (c.Get(0), 100, -100);
+  anim.SetConstantPosition (c.Get(1), 120, -100);
+  anim.SetConstantPosition (c.Get(2), 140, -90);
+  anim.SetConstantPosition (c.Get(3), 140, -110);
+  anim.SetConstantPosition (c.Get(4), 100, -80);
+  anim.SetConstantPosition (c.Get(5), 120, -80);
+  anim.SetConstantPosition (c.Get(6), 120, -60);
+  anim.SetConstantPosition (c.Get(7), 140, -70);
+  anim.SetConstantPosition (c.Get(8), 160, -90);
+  anim.SetConstantPosition (c.Get(9), 180,- 90);
+  
    // Flow Monitor
    FlowMonitorHelper flowmonHelper;
    if (enableFlowMonitor)
