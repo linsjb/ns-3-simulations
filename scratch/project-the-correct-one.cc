@@ -55,12 +55,19 @@ NS_LOG_COMPONENT_DEFINE("SimpleGlobalRoutingExample");
 
 void TcPacketsInQueue(QueueDiscContainer qdiscs,
                       Ptr<OutputStreamWrapper> stream) {
+
+  uint32_t nQueueDiscs = qdiscs.GetN();
+  for (uint32_t i = 0; i < nQueueDiscs; ++i) {
+    Ptr<QueueDisc> p = qdiscs.Get(i);
+    uint32_t size = p->GetNPackets();
+    *stream->GetStream() << Simulator::Now().GetSeconds() << "\t" << size
+                         << std::endl;
+  }
   // Get current queue size value and save to file.
-  Ptr<QueueDisc> p = qdiscs.Get(1);
-  uint32_t size = p->GetNPackets();
-  *stream->GetStream() << Simulator::Now().GetSeconds() << "\t" << size
-                       << std::endl;
-  std::cout << "size: " << size << std::endl;
+  //	Ptr<QueueDisc> p = qdiscs.Get (0);
+  //	uint32_t size = p->GetNPackets();
+  //	*stream->GetStream () << Simulator::Now ().GetSeconds () << "\t" << size
+  //<< std::endl;
 }
 
 static void received_msg(Ptr<Socket> socket1, Ptr<Socket> socket2,
@@ -134,6 +141,14 @@ int main(int argc, char *argv[]) {
   NodeContainer c;
   Address serverAddress;
 
+  TrafficControlHelper tch;
+  // tch.Uninstall(dGdS);
+  // uint16_t handle = tch.SetRootQueueDisc ("ns3::FifoQueueDisc");
+  //  tch.AddInternalQueues (handle, 3, "ns3::DropTailQueue", "MaxSize",
+  //  StringValue (queueSize+"p"));
+  tch.SetRootQueueDisc("ns3::FifoQueueDisc", "MaxSize",
+                       StringValue(queueSize + "p"));
+
   c.Create(10);
   NodeContainer nAnE = NodeContainer(c.Get(0), c.Get(1));
   NodeContainer nEnG = NodeContainer(c.Get(1), c.Get(2));
@@ -149,13 +164,12 @@ int main(int argc, char *argv[]) {
 
   InternetStackHelper internet;
   internet.Install(c);
-
   // We create the channels first without any IP addressing information
   NS_LOG_INFO("Create channels.");
   PointToPointHelper p2p;
   p2p.SetDeviceAttribute("DataRate", StringValue("5Mbps"));
   p2p.SetChannelAttribute("Delay", StringValue("2ms"));
-  p2p.SetQueue("ns3::DropTailQueue", "MaxSize", StringValue("1p"));
+  p2p.SetQueue("ns3::DropTailQueue", "MaxSize", StringValue("10p"));
 
   NetDeviceContainer dAdE = p2p.Install(nAnE);
   NetDeviceContainer dEdG = p2p.Install(nEnG);
@@ -165,30 +179,17 @@ int main(int argc, char *argv[]) {
 
   p2p.SetDeviceAttribute("DataRate", StringValue("8Mbps"));
   p2p.SetChannelAttribute("Delay", StringValue("2ms"));
-  p2p.SetQueue("ns3::DropTailQueue", "MaxSize", StringValue("1p"));
+  p2p.SetQueue("ns3::DropTailQueue", "MaxSize", StringValue("10p"));
 
   NetDeviceContainer dFdG = p2p.Install(nFnG);
   NetDeviceContainer dGdR = p2p.Install(nGnR);
 
-  p2p.SetDeviceAttribute("DataRate", StringValue("1kbps"));
+  p2p.SetDeviceAttribute("DataRate", StringValue("10Mbps"));
   p2p.SetChannelAttribute("Delay", StringValue("2ms"));
-  p2p.SetQueue("ns3::DropTailQueue", "MaxSize", StringValue(queueSize + "p"));
+  p2p.SetQueue("ns3::DropTailQueue");
 
   NetDeviceContainer dGdS = p2p.Install(nGnS);
-
-  NS_LOG_INFO("Create queue disc.");
-  TrafficControlHelper tch;
-  tch.SetRootQueueDisc("ns3::FifoQueueDisc", "MaxSize",
-                       StringValue(queueSize + "p"));
-  QueueDiscContainer qdiscs = tch.Install(dAdE);
-
-  AsciiTraceHelper asciiTraceHelper;
-  Ptr<OutputStreamWrapper> stream =
-      asciiTraceHelper.CreateFileStream("queue.tr");
-
-  for (float t = 1.0; t < simulationTime; t += 0.001) {
-    Simulator::Schedule(Seconds(t), &TcPacketsInQueue, qdiscs, stream);
-  }
+  QueueDiscContainer qdiscs = tch.Install(dGdS);
 
   // Later, we add IP addresses.
   NS_LOG_INFO("Assign IP Addresses.");
@@ -221,6 +222,14 @@ int main(int argc, char *argv[]) {
   // tables in the nodes.
   Ipv4GlobalRoutingHelper::PopulateRoutingTables();
 
+  AsciiTraceHelper asciiTraceHelper;
+  Ptr<OutputStreamWrapper> stream =
+      asciiTraceHelper.CreateFileStream("queue.tr");
+
+  for (float t = 1.0; t < simulationTime; t += 0.001) {
+    Simulator::Schedule(Seconds(t), &TcPacketsInQueue, qdiscs, stream);
+  }
+
   NS_LOG_INFO("Create Applications.");
   //
   // Create a UdpServer application on node S.
@@ -249,7 +258,7 @@ int main(int argc, char *argv[]) {
       "RxWithAddresses", MakeBoundCallback(&received_msg, source1, source2));
 
   server_apps.Start(Seconds(1.0));
-  server_apps.Stop(Seconds(3.0));
+  server_apps.Stop(Seconds(10.0));
 
   //
   // Create a UdpServer application on node A,B.
@@ -268,17 +277,33 @@ int main(int argc, char *argv[]) {
   Ptr<Socket> sourceB = Socket::CreateSocket(c.Get(4), tid);
   sourceB->Connect(remote);
 
+  Ptr<Socket> sourceC = Socket::CreateSocket(c.Get(6), tid);
+  sourceC->Connect(remote);
+
+  Ptr<Socket> sourceD = Socket::CreateSocket(c.Get(7), tid);
+  sourceD->Connect(remote);
+
   // Mean inter-transmission time
   double mean = 0.002; // 2 ms
   Ptr<ExponentialRandomVariable> randomTime =
       CreateObject<ExponentialRandomVariable>();
   randomTime->SetAttribute("Mean", DoubleValue(mean));
 
+  double meanC = 0.0005; // 0.5 ms
+  Ptr<ExponentialRandomVariable> randomTimeC =
+      CreateObject<ExponentialRandomVariable>();
+  randomTimeC->SetAttribute("Mean", DoubleValue(meanC));
+
+  double meanD = 0.001; // 0.5 ms
+  Ptr<ExponentialRandomVariable> randomTimeD =
+      CreateObject<ExponentialRandomVariable>();
+  randomTimeD->SetAttribute("Mean", DoubleValue(meanD));
+
   // Mean packet time
-  mean = 100; // 100 Bytes
+  double meanSize = 100; // 100 Bytes
   Ptr<ExponentialRandomVariable> randomSize =
       CreateObject<ExponentialRandomVariable>();
-  randomSize->SetAttribute("Mean", DoubleValue(mean));
+  randomSize->SetAttribute("Mean", DoubleValue(meanSize));
 
   Simulator::ScheduleWithContext(sourceA->GetNode()->GetId(), Seconds(2.0),
                                  &GenerateTraffic, sourceA, randomSize,
@@ -286,6 +311,31 @@ int main(int argc, char *argv[]) {
   Simulator::ScheduleWithContext(sourceB->GetNode()->GetId(), Seconds(2.0),
                                  &GenerateTraffic, sourceB, randomSize,
                                  randomTime);
+  Simulator::ScheduleWithContext(sourceC->GetNode()->GetId(), Seconds(2.0),
+                                 &GenerateTraffic, sourceC, randomSize,
+                                 randomTimeC);
+  Simulator::ScheduleWithContext(sourceD->GetNode()->GetId(), Seconds(2.0),
+                                 &GenerateTraffic, sourceD, randomSize,
+                                 randomTimeD);
+
+  //
+  // Create a UdpEchoClient application to send UDP datagrams from node zero to
+  // node one.
+  //
+  /*
+         serverAddress = Address(  iGiS.GetAddress (1));
+    uint32_t packetSize = 1024;
+    //uint32_t maxPacketCount = 1;
+    Time interPacketInterval = Seconds (1.);
+    UdpEchoClientHelper client (serverAddress, port);
+    //client.SetAttribute ("MaxPackets", UintegerValue (maxPacketCount));
+    client.SetAttribute ("Interval", TimeValue (interPacketInterval));
+    client.SetAttribute ("PacketSize", UintegerValue (packetSize));
+    apps = client.Install (c.Get (0));
+    apps.Start (Seconds (2.0));
+    apps.Stop (Seconds (10.0));
+
+ */
 
   AsciiTraceHelper ascii;
   p2p.EnableAsciiAll(ascii.CreateFileStream("simple-global-routing.tr"));
