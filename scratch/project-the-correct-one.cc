@@ -47,6 +47,7 @@
 #include "ns3/netanim-module.h"
 #include "ns3/network-module.h"
 #include "ns3/point-to-point-module.h"
+#include "ns3/csma-module.h"
 #include "ns3/traffic-control-module.h"
 
 using namespace ns3;
@@ -73,16 +74,16 @@ void TcPacketsInQueue(QueueDiscContainer qdiscs,
 static void received_msg(Ptr<Socket> socket1, Ptr<Socket> socket2,
                          Ptr<const Packet> p, const Address &srcAddress,
                          const Address &dstAddress) {
-  std::cout << "::::: A packet received at the Server! Time:   "
-            << Simulator::Now().GetSeconds() << std::endl;
+  //std::cout << "::::: A packet received at the Server! Time:   "
+  //          << Simulator::Now().GetSeconds() << std::endl;
 
   Ptr<UniformRandomVariable> rand = CreateObject<UniformRandomVariable>();
 
   if (rand->GetValue(0.0, 1.0) <= 0.7) {
-    std::cout << "::::: Transmitting from Server to Router   " << std::endl;
+    //std::cout << "::::: Transmitting from Server to Router   " << std::endl;
     socket1->Send(Create<Packet>(p->GetSize()));
   } else {
-    std::cout << "::::: Transmitting from GW to Controller   " << std::endl;
+    //std::cout << "::::: Transmitting from GW to Controller   " << std::endl;
     socket2->SendTo(Create<Packet>(p->GetSize()), 0, srcAddress);
   }
 }
@@ -92,10 +93,10 @@ static void GenerateTraffic(Ptr<Socket> socket,
                             Ptr<ExponentialRandomVariable> randomTime) {
   uint32_t pktSize =
       randomSize->GetInteger(); // Get random value for packet size
-  std::cout << "::::: A packet is generate at Node "
-            << socket->GetNode()->GetId() << " with size " << pktSize
-            << " bytes ! Time:   " << Simulator::Now().GetSeconds()
-            << std::endl;
+  //std::cout << "::::: A packet is generate at Node "
+            //<< socket->GetNode()->GetId() << " with size " << pktSize
+            //<< " bytes ! Time:   " << Simulator::Now().GetSeconds()
+            //<< std::endl;
 
   // We make sure that the message is at least 12 bytes. The minimum length of
   // the UDP header. We would get error otherwise.
@@ -133,7 +134,7 @@ int main(int argc, char *argv[]) {
   // cmd.Parse (argc, argv);
 
   double simulationTime = 11; // seconds
-  std::string queueSize = "1000";
+  std::string queueSize = "10000";
 
   // Here, we will explicitly create four nodes.  In more sophisticated
   // topologies, we could configure a node factory.
@@ -170,25 +171,32 @@ int main(int argc, char *argv[]) {
   p2p.SetDeviceAttribute("DataRate", StringValue("5Mbps"));
   p2p.SetChannelAttribute("Delay", StringValue("2ms"));
   p2p.SetQueue("ns3::DropTailQueue", "MaxSize", StringValue("10p"));
+  
+  
+   CsmaHelper csma;
+   csma.SetChannelAttribute ("DataRate", DataRateValue (DataRate (5000000)));
+   csma.SetChannelAttribute ("Delay", TimeValue (MilliSeconds (2)));
+   csma.SetQueue("ns3::DropTailQueue", "MaxSize", StringValue("10p"));
+  
 
-  NetDeviceContainer dAdE = p2p.Install(nAnE);
-  NetDeviceContainer dEdG = p2p.Install(nEnG);
-  NetDeviceContainer dBdF = p2p.Install(nBnF);
-  NetDeviceContainer dCdF = p2p.Install(nCnF);
-  NetDeviceContainer dDdG = p2p.Install(nDnG);
+   NetDeviceContainer dAdE = csma.Install(nAnE);
+   NetDeviceContainer dEdG = csma.Install(nEnG);
+   NetDeviceContainer dBdF = csma.Install(nBnF);
+   NetDeviceContainer dCdF = csma.Install(nCnF);
+   NetDeviceContainer dDdG = csma.Install(nDnG);
 
-  p2p.SetDeviceAttribute("DataRate", StringValue("8Mbps"));
-  p2p.SetChannelAttribute("Delay", StringValue("2ms"));
-  p2p.SetQueue("ns3::DropTailQueue", "MaxSize", StringValue("10p"));
+   csma.SetChannelAttribute ("DataRate", DataRateValue (DataRate (8000000)));
+   csma.SetChannelAttribute ("Delay", TimeValue (MilliSeconds (2)));
+ 
 
-  NetDeviceContainer dFdG = p2p.Install(nFnG);
-  NetDeviceContainer dGdR = p2p.Install(nGnR);
+  NetDeviceContainer dFdG = csma.Install(nFnG);
+  NetDeviceContainer dGdR = csma.Install(nGnR);
 
-  p2p.SetDeviceAttribute("DataRate", StringValue("10Mbps"));
-  p2p.SetChannelAttribute("Delay", StringValue("2ms"));
-  p2p.SetQueue("ns3::DropTailQueue");
+   csma.SetChannelAttribute ("DataRate", DataRateValue (DataRate (10000000)));
+   csma.SetChannelAttribute ("Delay", TimeValue (MilliSeconds (2)));
 
-  NetDeviceContainer dGdS = p2p.Install(nGnS);
+  NetDeviceContainer dGdS = csma.Install(nGnS);
+  
   QueueDiscContainer qdiscs = tch.Install(dGdS);
 
   // Later, we add IP addresses.
@@ -337,22 +345,11 @@ int main(int argc, char *argv[]) {
 
  */
 
-  AsciiTraceHelper ascii;
-  p2p.EnableAsciiAll(ascii.CreateFileStream("simple-global-routing.tr"));
-  p2p.EnablePcapAll("simple-global-routing");
+  //AsciiTraceHelper ascii;
+  //csma.EnableAsciiAll(ascii.CreateFileStream("simple-global-routing.tr"));
+  //csma.EnablePcapAll("simple-global-routing");
 
-  AnimationInterface anim("example.xml");
-  anim.EnablePacketMetadata(true);
-  anim.SetConstantPosition(c.Get(0), 100, -100);
-  anim.SetConstantPosition(c.Get(1), 120, -100);
-  anim.SetConstantPosition(c.Get(2), 140, -90);
-  anim.SetConstantPosition(c.Get(3), 140, -110);
-  anim.SetConstantPosition(c.Get(4), 100, -80);
-  anim.SetConstantPosition(c.Get(5), 120, -80);
-  anim.SetConstantPosition(c.Get(6), 120, -60);
-  anim.SetConstantPosition(c.Get(7), 140, -70);
-  anim.SetConstantPosition(c.Get(8), 160, -90);
-  anim.SetConstantPosition(c.Get(9), 180, -90);
+
 
   // Flow Monitor
   FlowMonitorHelper flowmonHelper;
