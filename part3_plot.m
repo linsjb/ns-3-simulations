@@ -9,11 +9,11 @@ legends = ["P2P", "CSMA"];
 data1 = readtable("scratch/" + file_names(1) + ".txt");
 data2 = readtable("scratch/" + file_names(2) + ".txt");
 
-plot(table2array(data1(:,1)), table2array(data1(:,2)), 'x')
+plot(table2array(data1(:,1)), table2array(data1(:,2)))
 hold on
-plot(table2array(data2(:,1)), table2array(data2(:,2)), 'O')
+plot(table2array(data2(:,1)), table2array(data2(:,2)))
 
-
-xlabel("Time")
+title("P2P vs CSMA/CD queue size")
+xlabel("Time (s)")
 ylabel("Queue size")
 legend(legends)

@@ -1,4 +1,38 @@
 /* -*- Mode:C++; c-file-style:"gnu"; indent-tabs-mode:nil; -*- */
+/*
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation;
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ *
+ */
+
+//
+// Network topology
+//
+//  n0
+//     \ 5 Mb/s, 2ms
+//      \          1.5Mb/s, 10ms
+//       n2 -------------------------n3
+//      /
+//     / 5 Mb/s, 2ms
+//   n1
+//
+// - all links are point-to-point links with indicated one-way BW/delay
+// - CBR/UDP flows from n0 to n3, and from n3 to n1
+// - FTP/TCP flow from n0 to n3, starting at time 1.2 to time 1.35 sec.
+// - UDP packet size of 210 bytes, with per-packet interval 0.00375 sec.
+//   (i.e., DataRate of 448,000 bps)
+// - DropTail queues
+// - Tracing of queues and packet receptions to file "simple-global-routing.tr"
 
 #include <cassert>
 #include <fstream>
@@ -7,6 +41,7 @@
 
 #include "ns3/applications-module.h"
 #include "ns3/core-module.h"
+#include "ns3/csma-module.h"
 #include "ns3/flow-monitor-helper.h"
 #include "ns3/internet-module.h"
 #include "ns3/ipv4-global-routing-helper.h"
@@ -36,27 +71,11 @@ void TcPacketsInQueue(QueueDiscContainer qdiscs,
   //<< std::endl;
 }
 
-std::vector<double> lcg_rand(long a, int c, int m, int seed, int n) {
-  std::vector<double> values;
-
-  for (int i = 0; i < n; i++) {
-    double max = 1.0 / (1.0 + (m - 1));
-    seed = (int)(a * seed + c) % (int)m;
-
-    if (seed < 0)
-      seed += m;
-
-    values.push_back((double)seed * max);
-  }
-
-  return values;
-}
-
 static void received_msg(Ptr<Socket> socket1, Ptr<Socket> socket2,
                          Ptr<const Packet> p, const Address &srcAddress,
                          const Address &dstAddress) {
-  // std::cout << "::::: A packet received at the Server! Time:   "<<
-  // Simulator::Now().GetSeconds() << std::endl;
+  // std::cout << "::::: A packet received at the Server! Time:   "
+  //          << Simulator::Now().GetSeconds() << std::endl;
 
   Ptr<UniformRandomVariable> rand = CreateObject<UniformRandomVariable>();
 
@@ -74,9 +93,10 @@ static void GenerateTraffic(Ptr<Socket> socket,
                             Ptr<ExponentialRandomVariable> randomTime) {
   uint32_t pktSize =
       randomSize->GetInteger(); // Get random value for packet size
-  // std::cout << "::::: A packet is generate at Node "<<
-  // socket->GetNode()->GetId() << " with size " << pktSize<< " bytes ! Time: "
-  // << Simulator::Now().GetSeconds() << std::endl;
+  // std::cout << "::::: A packet is generate at Node "
+  //<< socket->GetNode()->GetId() << " with size " << pktSize
+  //<< " bytes ! Time:   " << Simulator::Now().GetSeconds()
+  //<< std::endl;
 
   // We make sure that the message is at least 12 bytes. The minimum length of
   // the UDP header. We would get error otherwise.
@@ -113,7 +133,7 @@ int main(int argc, char *argv[]) {
   // cmd.AddValue ("EnableMonitor", "Enable Flow Monitor", enableFlowMonitor);
   // cmd.Parse (argc, argv);
 
-  double simulationTime = 10; // seconds
+  double simulationTime = 11; // seconds
   std::string queueSize = "1000";
 
   // Here, we will explicitly create four nodes.  In more sophisticated
@@ -152,24 +172,27 @@ int main(int argc, char *argv[]) {
   p2p.SetChannelAttribute("Delay", StringValue("2ms"));
   p2p.SetQueue("ns3::DropTailQueue", "MaxSize", StringValue("10p"));
 
-  NetDeviceContainer dAdE = p2p.Install(nAnE);
-  NetDeviceContainer dEdG = p2p.Install(nEnG);
-  NetDeviceContainer dBdF = p2p.Install(nBnF);
-  NetDeviceContainer dCdF = p2p.Install(nCnF);
-  NetDeviceContainer dDdG = p2p.Install(nDnG);
+  CsmaHelper csma;
+  csma.SetChannelAttribute("DataRate", DataRateValue(DataRate(5000000)));
+  csma.SetChannelAttribute("Delay", TimeValue(MilliSeconds(2)));
+  csma.SetQueue("ns3::DropTailQueue", "MaxSize", StringValue("10p"));
 
-  p2p.SetDeviceAttribute("DataRate", StringValue("8Mbps"));
-  p2p.SetChannelAttribute("Delay", StringValue("2ms"));
-  p2p.SetQueue("ns3::DropTailQueue", "MaxSize", StringValue("10p"));
+  NetDeviceContainer dAdE = csma.Install(nAnE);
+  NetDeviceContainer dEdG = csma.Install(nEnG);
+  NetDeviceContainer dBdF = csma.Install(nBnF);
+  NetDeviceContainer dCdF = csma.Install(nCnF);
+  NetDeviceContainer dDdG = csma.Install(nDnG);
 
-  NetDeviceContainer dFdG = p2p.Install(nFnG);
-  NetDeviceContainer dGdR = p2p.Install(nGnR);
+  csma.SetChannelAttribute("DataRate", DataRateValue(DataRate(8000000)));
+  csma.SetChannelAttribute("Delay", TimeValue(MilliSeconds(2)));
 
-  p2p.SetDeviceAttribute("DataRate", StringValue("10Mbps"));
-  p2p.SetChannelAttribute("Delay", StringValue("2ms"));
-  p2p.SetQueue("ns3::DropTailQueue");
+  NetDeviceContainer dFdG = csma.Install(nFnG);
+  NetDeviceContainer dGdR = csma.Install(nGnR);
 
-  NetDeviceContainer dGdS = p2p.Install(nGnS);
+  csma.SetChannelAttribute("DataRate", DataRateValue(DataRate(10000000)));
+  csma.SetChannelAttribute("Delay", TimeValue(MilliSeconds(2)));
+
+  NetDeviceContainer dGdS = csma.Install(nGnS);
 
   QueueDiscContainer qdiscs = tch.Install(dGdS);
 
@@ -206,7 +229,7 @@ int main(int argc, char *argv[]) {
 
   AsciiTraceHelper asciiTraceHelper;
   Ptr<OutputStreamWrapper> stream =
-      asciiTraceHelper.CreateFileStream("p2p_queue.txt");
+      asciiTraceHelper.CreateFileStream("queue.tr");
 
   for (float t = 1.0; t < simulationTime; t += 0.001) {
     Simulator::Schedule(Seconds(t), &TcPacketsInQueue, qdiscs, stream);
@@ -240,7 +263,7 @@ int main(int argc, char *argv[]) {
       "RxWithAddresses", MakeBoundCallback(&received_msg, source1, source2));
 
   server_apps.Start(Seconds(1.0));
-  server_apps.Stop(Seconds(10.0));
+  server_apps.Stop(Seconds(simulationTime));
 
   //
   // Create a UdpServer application on node A,B.
@@ -276,18 +299,16 @@ int main(int argc, char *argv[]) {
       CreateObject<ExponentialRandomVariable>();
   randomTimeC->SetAttribute("Mean", DoubleValue(meanC));
 
-  double meanD = 0.001; // 1 ms
+  double meanD = 0.001; // 0.5 ms
   Ptr<ExponentialRandomVariable> randomTimeD =
       CreateObject<ExponentialRandomVariable>();
   randomTimeD->SetAttribute("Mean", DoubleValue(meanD));
 
   // Mean packet time
-  /*double meanSize = 200; // 100 Bytes
+  double meanSize = 150; // 100 Bytes
   Ptr<ExponentialRandomVariable> randomSize =
       CreateObject<ExponentialRandomVariable>();
   randomSize->SetAttribute("Mean", DoubleValue(meanSize));
-*/
-  std::vector<double> lcgVector = lcg_rand(13, 1, 100, 1, 1000);
 
   Simulator::ScheduleWithContext(sourceA->GetNode()->GetId(), Seconds(2.0),
                                  &GenerateTraffic, sourceA, randomSize,
@@ -321,9 +342,9 @@ int main(int argc, char *argv[]) {
 
  */
 
-  AsciiTraceHelper ascii;
-  p2p.EnableAsciiAll(ascii.CreateFileStream("simple-global-routing.tr"));
-  p2p.EnablePcapAll("simple-global-routing");
+  // AsciiTraceHelper ascii;
+  // csma.EnableAsciiAll(ascii.CreateFileStream("simple-global-routing.tr"));
+  // csma.EnablePcapAll("simple-global-routing");
 
   // Flow Monitor
   FlowMonitorHelper flowmonHelper;
